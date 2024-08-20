@@ -29,10 +29,12 @@
 
 #include "esp_camera.h"
 #include  "ST7789_AVR.h"
+#include  "profiler.h"
 
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
 
 extern void setup2(void);
+extern void setup3(void);
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
@@ -172,7 +174,9 @@ void setup()
     ei_printf("\nStarting continious inference in 2 seconds...\n");
 
     setup2();
+    setup3();
     ei_sleep(2000);
+
 }
 
 /**
@@ -182,13 +186,17 @@ void setup()
 */
 void loop()
 {
-
+    MARK("very start of loop\n");
     // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
+    #if 0
     if (ei_sleep(5) != EI_IMPULSE_OK) {
         return;
     }
+    MARK("ei_sleep(5)");
+    #endif
 
     snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+
 
     // check if allocation was successful
     if(snapshot_buf == nullptr) {
@@ -196,16 +204,18 @@ void loop()
         return;
     }
 
+    MARK("malloc");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
+    MARK("");
 
     if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
         ei_printf("Failed to capture image\r\n");
         free(snapshot_buf);
         return;
     }
-    log_i("early return");
+    MARK("ei_camera_capture");
 
     // Run the classifier
     ei_impulse_result_t result = { 0 };
@@ -216,6 +226,7 @@ void loop()
         return;
     }
 
+    MARK("run_classifier");
     // print the predictions
     ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
                 result.timing.dsp, result.timing.classification, result.timing.anomaly);
@@ -235,7 +246,7 @@ void loop()
                 bb.width,
                 bb.height);
     }
-
+    MARK("");
     // Print the prediction results (classification)
 #else
     ei_printf("Predictions:\r\n");
@@ -243,6 +254,7 @@ void loop()
         ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
         ei_printf("%.5f\r\n", result.classification[i].value);
     }
+    MARK("");
 #endif
 
     // Print anomaly result (if it exists)
@@ -267,7 +279,7 @@ void loop()
     }
 #endif
 
-
+    MARK("");
     free(snapshot_buf);
 
 }
