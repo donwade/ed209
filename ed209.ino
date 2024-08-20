@@ -28,6 +28,11 @@
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 
 #include "esp_camera.h"
+#include  "ST7789_AVR.h"
+
+extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
+
+extern void setup2(void);
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
@@ -153,6 +158,7 @@ void setup()
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
+    delay(3000);
     //comment out the below line to start inference immediately after upload
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
@@ -164,6 +170,8 @@ void setup()
     }
 
     ei_printf("\nStarting continious inference in 2 seconds...\n");
+
+    setup2();
     ei_sleep(2000);
 }
 
@@ -197,6 +205,7 @@ void loop()
         free(snapshot_buf);
         return;
     }
+    log_i("early return");
 
     // Run the classifier
     ei_impulse_result_t result = { 0 };
@@ -350,7 +359,16 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         return false;
     }
 
+   log_d("fmt2rgb  width=%d height=%d", fb->width, fb->height);
+   log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
+   log_d("fmt2rgb out %s", converted ? "pass": "fail");
+
+   uint16_t *foo = convert( fb->width, fb->height, fb->buf);
+
+   lcd.viewPort(0, 0,200, 200, 0, 0, fb->width, fb->height, foo);
+   //lcd.drawImage(0,0, 100,100,foo);
+   free(foo);
 
    esp_camera_fb_return(fb);
 
@@ -364,6 +382,11 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         do_resize = true;
     }
 
+    log_d("resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
+    log_d("img_width == %d vs %d and img_height == %d vs %d",
+        img_width, EI_CAMERA_RAW_FRAME_BUFFER_COLS,
+        img_height, EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+
     if (do_resize) {
         ei::image::processing::crop_and_interpolate_rgb888(
         out_buf,
@@ -373,7 +396,6 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         img_width,
         img_height);
     }
-
 
     return true;
 }
