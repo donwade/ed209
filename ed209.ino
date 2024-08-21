@@ -28,7 +28,7 @@
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 
 #include "esp_camera.h"
-#include  "ST7789_AVR.h"
+//#include  "ST7789_AVR.h"
 #include  "profiler.h"
 
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
@@ -41,9 +41,7 @@ extern void setup3(void);
 
 #ifdef ARDUINO_ESP32_WROVER_KIT
     #define CAMERA_MODEL_WROVER_KIT
-#elif defined ARDUINO_ESP32S3_CAM_LCD
-    #define CAMERA_MODEL_ESP32S3_EYE
-#elif defined ARDUINO_ESP32_S3_USB_OTG
+#elif defined ARDUINO_ESP32S3_DEV
     #define CAMERA_MODEL_ESP32S3_EYE
 #endif
 
@@ -168,6 +166,9 @@ void setup()
     // put your setup code here, to run once:
     Serial.begin(115200);
     delay(3000);
+
+    mem_report();
+
     //comment out the below line to start inference immediately after upload
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
@@ -193,7 +194,8 @@ void setup()
 */
 void loop()
 {
-    MARK("very start of loop\n");
+    Serial.println();
+    MARK("start of loop");
     // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
     #if 0
     if (ei_sleep(5) != EI_IMPULSE_OK) {
@@ -211,18 +213,17 @@ void loop()
         return;
     }
 
-    MARK("malloc");
+    MARK("malloc'd");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
-    MARK("");
 
     if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
         ei_printf("Failed to capture image\r\n");
         free(snapshot_buf);
         return;
     }
-    MARK("ei_camera_capture");
+    MARK("ei_camera_captured");
 
     // Run the classifier
     ei_impulse_result_t result = { 0 };
@@ -233,7 +234,7 @@ void loop()
         return;
     }
 
-    MARK("run_classifier");
+    MARK("classifier ran");
     // print the predictions
     ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
                 result.timing.dsp, result.timing.classification, result.timing.anomaly);
@@ -253,7 +254,7 @@ void loop()
                 bb.width,
                 bb.height);
     }
-    MARK("");
+    MARK("object scanning done");
     // Print the prediction results (classification)
 #else
     ei_printf("Predictions:\r\n");
@@ -261,7 +262,7 @@ void loop()
         ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
         ei_printf("%.5f\r\n", result.classification[i].value);
     }
-    MARK("");
+    MARK("predictions done");
 #endif
 
     // Print anomaly result (if it exists)
@@ -284,9 +285,10 @@ void loop()
                 bb.width,
                 bb.height);
     }
+    MARK("anomalies listed (if any)");
+
 #endif
 
-    MARK("");
     free(snapshot_buf);
 
 }
@@ -383,11 +385,13 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
+#if HAS_LCD
    uint16_t *foo = convert( fb->width, fb->height, fb->buf);
-
    lcd.viewPort(0, 0,200, 200, 0, 0, fb->width, fb->height, foo);
    //lcd.drawImage(0,0, 100,100,foo);
    free(foo);
+#endif
+
 
    esp_camera_fb_return(fb);
 

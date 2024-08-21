@@ -36,15 +36,43 @@ void setup3() {
 #define AC_WHITE "\x1b[37m"
 #define AC_NORMAL "\x1b[m"
 
-void stopStart(int line, char *file, char *fmt, ...)
+uint64_t stopStart(int line, char *file, char *fmt, ...)
 {
    char buffer[200];
-   //printf("%llu \n" ,timerReadMilis(hTimer));
+   char unit;
+
+   uint64_t clock = timerReadMicros(hTimer);
+
+   float scale = (float) clock;
+   if (scale < 1000)
+   {
+   	  unit = 'u';
+   }
+   else if (scale < 1000000)
+   {
+      unit = 'm';
+      scale /= 1000.;
+   }
+   else
+   {
+   	  unit = ' ';
+   	  scale /= 1000000.;
+   }
    va_list args;
    va_start(args, fmt);
    vsprintf(buffer, fmt, args);
-   printf(AC_YELLOW"%llu %s:%d %s\n"AC_NORMAL,timerReadMilis(hTimer), file, line, buffer);
+   printf(AC_YELLOW"%6.2f %cS %s:%d %s\n"AC_NORMAL,scale, unit,  file, line, buffer);
    va_end(args);
    timerRestart(hTimer);
+
+   return clock;
+}
+
+void mem_report() {
+    printf("Total heap: %lu\n", ESP.getHeapSize());
+    printf("Free heap: %lu\n", ESP.getFreeHeap());
+    printf("Total PSRAM: %lu\n", ESP.getPsramSize());
+    printf("Free PSRAM: %lu\n", ESP.getFreePsram());
+    printf(" built %s %s\n", __DATE__, __TIME__);
 }
 
