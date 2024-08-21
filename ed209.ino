@@ -39,10 +39,17 @@ extern void setup3(void);
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
 
+#ifdef ARDUINO_ESP32_WROVER_KIT
+    #define CAMERA_MODEL_WROVER_KIT
+#elif defined ARDUINO_ESP32S3_CAM_LCD
+    #define CAMERA_MODEL_ESP32S3_EYE
+#elif defined ARDUINO_ESP32_S3_USB_OTG
+    #define CAMERA_MODEL_ESP32S3_EYE
+#endif
+
 // ===================
 // Select camera model
 // ===================
-#define CAMERA_MODEL_WROVER_KIT // Has PSRAM
 //#define CAMERA_MODEL_ESP_EYE  // Has PSRAM
 //#define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
 //#define CAMERA_MODEL_M5STACK_PSRAM // Has PSRAM
