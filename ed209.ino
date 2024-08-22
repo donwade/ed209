@@ -329,6 +329,10 @@ bool ei_camera_init(void) {
     s->set_vflip(s, 1);
     s->set_hmirror(s, 1);
     s->set_awb_gain(s, 1);
+#elif defined(CAMERA_MODEL_ESP32S3_EYE)
+    s->set_vflip(s, 0);
+    s->set_hmirror(s, 0);
+    s->set_awb_gain(s, 1);
 #endif
 
     is_initialised = true;
