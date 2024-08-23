@@ -28,7 +28,7 @@
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 
 #include "esp_camera.h"
-//#include  "ST7789_AVR.h"
+#include  "ST7789_AVR.h"
 #include  "profiler.h"
 
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
@@ -389,12 +389,12 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
-#if HAS_LCD
+//#if HAS_LCD
    uint16_t *foo = convert( fb->width, fb->height, fb->buf);
-   lcd.viewPort(0, 0,200, 200, 0, 0, fb->width, fb->height, foo);
-   //lcd.drawImage(0,0, 100,100,foo);
+   lcd->viewPort(0, 0,200, 200, 0, 0, fb->width, fb->height, foo);
+   //lcd->drawImage(0,0, 100,100,foo);
    free(foo);
-#endif
+//#endif
 
 
    esp_camera_fb_return(fb);
