@@ -225,6 +225,7 @@ void loop()
     }
     MARK("ei_camera_captured");
 
+#if 0
     // Run the classifier
     ei_impulse_result_t result = { 0 };
 
@@ -287,6 +288,10 @@ void loop()
     }
     MARK("anomalies listed (if any)");
 
+#endif
+
+#else
+    printf("AI disabled, %s %s\n", __DATE__, __TIME__);
 #endif
 
     free(snapshot_buf);
@@ -384,16 +389,45 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         return false;
     }
 
-   log_d("fmt2rgb  width=%d height=%d", fb->width, fb->height);
+   log_i("fmt2rgb  width=%d height=%d area=%d", fb->width, fb->height, fb->width
+   * fb->height);
    log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
+
+
+
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
 //#if HAS_LCD
-   uint16_t *foo = convert( fb->width, fb->height, fb->buf);
-   lcd->viewPort(0, 0,200, 200, 0, 0, fb->width, fb->height, foo);
-   //lcd->drawImage(0,0, 100,100,foo);
-   free(foo);
+    uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width *
+    sizeof(*pRGB565));
+    bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
+
+/*
+    uint8_t *out;
+    size_t out_len = 0;
+    bool fart = frame2bmp(fb, &out, &out_len);
+    log_i("out_len = %d", out_len);
+*/
+/*
+   uint16_t *foo = (uint16_t *) malloc( 280 * 240 * sizeofdd (*foo));
+    memset(foo, 55, 280 * 240 * sizeof (*foo));
+
+   int retval = ei::image::processing::resize_image(snapshot_buf, //expects rgb888
+                                        fb->width,
+                                        fb->height,
+                                        (uint8_t*)foo,
+                                        280,
+                                        240,
+                                        2);
+
+   assert(retval == EIDSP_OK);
+*/
+
+   lcd->viewPort(0, 0,240, 240, 0, 0, fb->width, fb->height, pRGB565);
+   //lcd->drawImage(0,0, 240-1,280-1, (uint16_t*) out);
+   //lcd->drawImage(0,0, 240, 240, (uint16_t*) out);
+   free(pRGB565);
 //#endif
 
 
