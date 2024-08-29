@@ -21,6 +21,7 @@ void setup2(void)
   lcd = new ST7789_AVR(ENGINE_HSPI);
   lcd->init(SCR_WD, SCR_HT);
   lcd->fillScreen(BLACK);
+  lcd->setRotation(three_oclock);
 
   int i,j;
   for(j=0;j<7;j++)
