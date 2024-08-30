@@ -118,7 +118,7 @@ extern void setup3(void);
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
-uint8_t *snapshot_buf; //points to the output of the capture
+uint8_t *pRGB88; //points to the output of the capture
 
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -204,28 +204,28 @@ void loop()
     MARK("ei_sleep(5)");
     #endif
 
-    snapshot_buf = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+    pRGB88 = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 
 
     // check if allocation was successful
-    if(snapshot_buf == nullptr) {
+    if(pRGB88 == nullptr) {
         ei_printf("ERR: Failed to allocate snapshot buffer!\n");
         return;
     }
 
-    MARK("malloc'd");
+    //MARK("malloc'd");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, snapshot_buf) == false) {
+    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB88) == false) {
         ei_printf("Failed to capture image\r\n");
-        free(snapshot_buf);
+        free(pRGB88);
         return;
     }
-    MARK("ei_camera_captured");
+    //MARK("ei_camera_captured");
 
-#if 0
+#ifndef NO_AI
     // Run the classifier
     ei_impulse_result_t result = { 0 };
 
@@ -235,10 +235,10 @@ void loop()
         return;
     }
 
-    MARK("classifier ran");
+    //MARK("classifier ran");
     // print the predictions
-    ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-                result.timing.dsp, result.timing.classification, result.timing.anomaly);
+    //ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+    //            result.timing.dsp, result.timing.classification, result.timing.anomaly);
 
 #if EI_CLASSIFIER_OBJECT_DETECTION == 1
     ei_printf("Object detection bounding boxes:\r\n");
@@ -255,7 +255,7 @@ void loop()
                 bb.width,
                 bb.height);
     }
-    MARK("object scanning done");
+    //MARK("object scanning done");
     // Print the prediction results (classification)
 #else
     ei_printf("Predictions:\r\n");
@@ -263,7 +263,7 @@ void loop()
         ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
         ei_printf("%.5f\r\n", result.classification[i].value);
     }
-    MARK("predictions done");
+    //MARK("predictions done");
 #endif
 
     // Print anomaly result (if it exists)
@@ -286,7 +286,7 @@ void loop()
                 bb.width,
                 bb.height);
     }
-    MARK("anomalies listed (if any)");
+    //MARK("anomalies listed (if any)");
 
 #endif
 
@@ -294,7 +294,7 @@ void loop()
     printf("AI disabled, %s %s\n", __DATE__, __TIME__);
 #endif
 
-    free(snapshot_buf);
+    free(pRGB88);
 
 }
 
@@ -389,13 +389,13 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         return false;
     }
 
-   log_i("fmt2rgb  width=%d height=%d area=%d", fb->width, fb->height, fb->width
+   log_d("fmt2rgb  width=%d height=%d area=%d", fb->width, fb->height, fb->width
    * fb->height);
    log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
 
 
 
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, snapshot_buf);
+   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
 #ifndef NO_LCD_DISPLAY
@@ -448,7 +448,7 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     while (pixels_left != 0) {
         // Swap BGR to RGB here
         // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (snapshot_buf[pixel_ix + 2] << 16) + (snapshot_buf[pixel_ix + 1] << 8) + snapshot_buf[pixel_ix];
+        out_ptr[out_ptr_ix] = (pRGB88[pixel_ix + 2] << 16) + (pRGB88[pixel_ix + 1] << 8) + pRGB88[pixel_ix];
 
         // go to the next pixel
         out_ptr_ix++;
