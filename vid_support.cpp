@@ -25,6 +25,8 @@
  */
 
 #include <stdint.h>
+#include "common.h"
+
 #define EIDSP_OK 1
 #define EIDSP_PARAMETER_INVALID 2
 #define EIDSP_NOT_SUPPORTED 3
