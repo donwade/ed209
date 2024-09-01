@@ -24,8 +24,14 @@
 // https://github.com/espressif/arduino-esp32/releases/tag/2.0.4
 
 /* Includes ---------------------------------------------------------------- */
-#include <ED209_inferencing.h>
-#include "edge-impulse-sdk/dsp/image/image.hpp"
+//#include <ED209_inferencing.h>
+#include "common.h"
+
+void runMachine(void);
+
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+#include "esp_log.h"
+static const char* TAG = "MyModule";
 
 #include "esp_camera.h"
 #include  "ST7789_AVR.h"
@@ -116,7 +122,6 @@ extern void setup3(void);
 #define EI_CAMERA_FRAME_BYTE_SIZE                 3
 
 /* Private variables ------------------------------------------------------- */
-static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
 uint8_t *pRGB88; //points to the output of the capture
 
@@ -154,9 +159,9 @@ static camera_config_t camera_config = {
 };
 
 /* Function definitions ------------------------------------------------------- */
-bool ei_camera_init(void);
-void ei_camera_deinit(void);
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
+bool camera_init(void);
+void camera_deinit(void);
+bool camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
 
 /**
 * @brief      Arduino setup function
@@ -172,24 +177,25 @@ void setup()
     //comment out the below line to start inference immediately after upload
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
-    if (ei_camera_init() == false) {
-        ei_printf("Failed to initialize Camera!\r\n");
+    if (camera_init() == false) {
+        ESP_LOGI(TAG, "Failed to initialize Camera!\r\n");
     }
     else {
-        ei_printf("Camera initialized\r\n");
+        ESP_LOGI(TAG, "Camera initialized\r\n");
     }
 
-    ei_printf("\nStarting continious inference in 2 seconds...\n");
+    ESP_LOGI(TAG, "\nStarting continious inference in 2 seconds...\n");
 
     setup2();
     setup3();
-    ei_sleep(2000);
+    delay(2000);
 
 }
 
 /**
 * @brief      Get data and run inferencing
 *
+
 * @param[in]  debug  Get debug info if true
 */
 void loop()
@@ -209,90 +215,21 @@ void loop()
 
     // check if allocation was successful
     if(pRGB88 == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
+        ESP_LOGI(TAG, "ERR: Failed to allocate snapshot buffer!\n");
         return;
     }
 
-    //MARK("malloc'd");
-    ei::signal_t signal;
-    signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
-    signal.get_data = &ei_camera_get_data;
+#define EI_CLASSIFIER_INPUT_WIDTH                96
+#define EI_CLASSIFIER_INPUT_HEIGHT               96
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB88) == false) {
-        ei_printf("Failed to capture image\r\n");
+    if (camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB88) == false) {
+        ESP_LOGI(TAG, "Failed to capture image\r\n");
         free(pRGB88);
         return;
     }
     //MARK("ei_camera_captured");
 
-#ifndef NO_AI
-    // Run the classifier
-    ei_impulse_result_t result = { 0 };
-
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        ei_printf("ERR: Failed to run classifier (%d)\n", err);
-        return;
-    }
-
-    //MARK("classifier ran");
-    // print the predictions
-    //ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-    //            result.timing.dsp, result.timing.classification, result.timing.anomaly);
-
-#if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    ei_printf("Object detection bounding boxes:\r\n");
-    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-    //MARK("object scanning done");
-    // Print the prediction results (classification)
-#else
-    ei_printf("Predictions:\r\n");
-    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-        ei_printf("%.5f\r\n", result.classification[i].value);
-    }
-    //MARK("predictions done");
-#endif
-
-    // Print anomaly result (if it exists)
-#if EI_CLASSIFIER_HAS_ANOMALY
-    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
-#endif
-
-#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
-    ei_printf("Visual anomalies:\r\n");
-    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
-        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
-        if (bb.value == 0) {
-            continue;
-        }
-        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
-                bb.label,
-                bb.value,
-                bb.x,
-                bb.y,
-                bb.width,
-                bb.height);
-    }
-    //MARK("anomalies listed (if any)");
-
-#endif
-
-#else
-    printf("AI disabled, %s %s\n", __DATE__, __TIME__);
-#endif
+    runMachine();
 
     free(pRGB88);
 
@@ -303,7 +240,7 @@ void loop()
  *
  * @retval  false if initialisation failed
  */
-bool ei_camera_init(void) {
+bool camera_init(void) {
 
     if (is_initialised) return true;
 
@@ -347,14 +284,14 @@ bool ei_camera_init(void) {
 /**
  * @brief      Stop streaming of sensor data
  */
-void ei_camera_deinit(void) {
+void camera_deinit(void) {
 
     //deinitialize the camera
     esp_err_t err = esp_camera_deinit();
 
     if (err != ESP_OK)
     {
-        ei_printf("Camera deinit failed\n");
+        ESP_LOGI(TAG, "Camera deinit failed\n");
         return;
     }
 
@@ -374,18 +311,18 @@ void ei_camera_deinit(void) {
  * @retval     false if not initialised, image captured, rescaled or cropped failed
  *
  */
-bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) {
+bool camera_capture(uint32_t tag_width, uint32_t tag_height, uint8_t *out_buf) {
     bool do_resize = false;
 
     if (!is_initialised) {
-        ei_printf("ERR: Camera is not initialized\r\n");
+        ESP_LOGI(TAG, "ERR: Camera is not initialized\r\n");
         return false;
     }
 
     camera_fb_t *fb = esp_camera_fb_get();
 
     if (!fb) {
-        ei_printf("Camera capture failed\n");
+        ESP_LOGI(TAG, "Camera capture failed\n");
         return false;
     }
 
@@ -395,8 +332,8 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 
 
 
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
-   log_d("fmt2rgb out %s", converted ? "pass": "fail");
+   bool bJPEG2RGB = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
+   log_d("fmt2rgb out %s", bJPEG2RGB ? "pass": "fail");
 
 #ifndef NO_LCD_DISPLAY
    uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width * sizeof(*pRGB565));
@@ -410,35 +347,35 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 
    esp_camera_fb_return(fb);
 
-   if(!converted){
-       ei_printf("Conversion failed\n");
+   if(!bJPEG2RGB){
+       ESP_LOGI(TAG, "Conversion failed\n");
        return false;
    }
 
-    if ((img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
-        || (img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
+    if ((tag_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
+        || (tag_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
         do_resize = true;
     }
 
     log_d("resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
-    log_d("img_width == %d vs %d and img_height == %d vs %d",
-        img_width, EI_CAMERA_RAW_FRAME_BUFFER_COLS,
-        img_height, EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+    log_d("tag_width == %d vs %d and tag_height == %d vs %d",
+        tag_width, EI_CAMERA_RAW_FRAME_BUFFER_COLS,
+        tag_height, EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
 
     if (do_resize) {
-        ei::image::processing::crop_and_interpolate_rgb888(
+        crop_and_interpolate_rgb888(
         out_buf,
         EI_CAMERA_RAW_FRAME_BUFFER_COLS,
         EI_CAMERA_RAW_FRAME_BUFFER_ROWS,
         out_buf,
-        img_width,
-        img_height);
+        tag_width,
+        tag_height);
     }
 
     return true;
 }
 
-static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
+int BGRtoRGB_swap(size_t offset, size_t length, float *out_ptr)
 {
     // we already have a RGB888 buffer, so recalculate offset into pixel index
     size_t pixel_ix = offset * 3;
@@ -459,6 +396,3 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     return 0;
 }
 
-#if !defined(EI_CLASSIFIER_SENSOR) || EI_CLASSIFIER_SENSOR != EI_CLASSIFIER_SENSOR_CAMERA
-#error "Invalid model for current sensor"
-#endif
