@@ -38,6 +38,10 @@ static const char* TAG = "MyModule";
 #include  "profiler.h"
 
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
+extern int BGRtoRGB_swap(size_t offset, size_t length, float *out_ptr);
+extern int RGB888to565 (uint8_t *in, uint16_t *out, uint32_t size);
+
+extern bool get_dims( uint8_t index, uint16_t *x, uint16_t *y);
 
 extern void setup2(void);
 extern void setup3(void);
@@ -314,10 +318,15 @@ void camera_deinit(void) {
 bool camera_capture(uint32_t tag_width, uint32_t tag_height, uint8_t *out_buf) {
     bool do_resize = false;
 
+    uint16_t  real_x, real_y;
+
     if (!is_initialised) {
         ESP_LOGI(TAG, "ERR: Camera is not initialized\r\n");
         return false;
     }
+
+    get_dims( camera_config.frame_size, &real_x, &real_y);
+    ESP_LOGI(TAG, "camera  phyiscal x=%d y=%d", real_x, real_y);
 
     camera_fb_t *fb = esp_camera_fb_get();
 
@@ -388,46 +397,4 @@ bool camera_capture(uint32_t tag_width, uint32_t tag_height, uint8_t *out_buf) {
     return true;
 }
 
-int BGRtoRGB_swap(size_t offset, size_t length, float *out_ptr)
-{
-    // we already have a RGB888 buffer, so recalculate offset into pixel index
-    size_t pixel_ix = offset * 3;
-    size_t pixels_left = length;
-    size_t out_ptr_ix = 0;
-
-    while (pixels_left != 0) {
-        // Swap BGR to RGB here
-        // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (pRGB88[pixel_ix + 2] << 16) + (pRGB88[pixel_ix + 1] << 8) + pRGB88[pixel_ix];
-
-        // go to the next pixel
-        out_ptr_ix++;
-        pixel_ix+=3;
-        pixels_left--;
-    }
-    // and done!
-    return 0;
-}
-
-int RGB888to565 (uint8_t *in, uint16_t *out, uint32_t size)
-{
-    uint32_t by_888 = 0;
-    uint32_t by_565 = 0;
-
-    // don't look to close, the RGB888 does have its
-    // R and G swapped so we swap it back for
-    // color correctness.
-
-    while(size--){
-        uint16_t R, G, B;
-        uint16_t mix;
-        B = in[by_888++] >> 3; // 5 bit accuracy
-        G = in[by_888++] >> 2; // 6 bit accuracy
-        R = in[by_888++] >> 3; // 5 bit accuracy
-        mix = (R << (5+6)) | (G << (5+0)) |  B;
-        out[by_565++] = mix;
-        //if (!(by_565 % 32)) printf("0x%02x 0x%02x 0x%02x 0x%04x \n ", R, G, B, mix);
-    }
-    return 1;
-}
 

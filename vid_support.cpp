@@ -24,6 +24,8 @@
  * @param opts Note, only BIG_ENDIAN_ORDER supported presently
  */
 
+#include <stddef.h>
+
 #include <stdint.h>
 #include "common.h"
 
@@ -395,5 +397,104 @@ int crop_and_interpolate_image(
 
     // Finally, interpolate down to desired dimensions, in place
     return resize_image(dstImage, cropWidth, cropHeight, dstImage, dstWidth, dstHeight, pixel_size_B);
+}
+
+
+extern uint8_t *pRGB88; //points to the output of the capture
+
+int BGRtoRGB_swap(size_t offset, size_t length, float *out_ptr)
+{
+    // we already have a RGB888 buffer, so recalculate offset into pixel index
+    size_t pixel_ix = offset * 3;
+    size_t pixels_left = length;
+    size_t out_ptr_ix = 0;
+
+    while (pixels_left != 0) {
+        // Swap BGR to RGB here
+        // due to https://github.com/espressif/esp32-camera/issues/379
+        out_ptr[out_ptr_ix] = (pRGB88[pixel_ix + 2] << 16) + (pRGB88[pixel_ix + 1] << 8) + pRGB88[pixel_ix];
+
+        // go to the next pixel
+        out_ptr_ix++;
+        pixel_ix+=3;
+        pixels_left--;
+    }
+    // and done!
+    return 0;
+}
+
+int RGB888to565 (uint8_t *in, uint16_t *out, uint32_t size)
+{
+    uint32_t by_888 = 0;
+    uint32_t by_565 = 0;
+
+    // don't look too close, the RGB888 does have its
+    // R and G swapped (h/w bug) so we swap it back for
+    // color correctness.
+
+    while(size--){
+        uint16_t R, G, B;
+        uint16_t mix;
+        B = in[by_888++] >> 3; // 5 bit accuracy
+        G = in[by_888++] >> 2; // 6 bit accuracy
+        R = in[by_888++] >> 3; // 5 bit accuracy
+        mix = (R << (5+6)) | (G << (5+0)) |  B;
+        out[by_565++] = mix;
+        //if (!(by_565 % 32)) printf("0x%02x 0x%02x 0x%02x 0x%04x \n ", R, G, B, mix);
+    }
+    return 1;
+}
+
+typedef struct DIM
+{
+    uint16_t x;
+    uint16_t y;
+};
+
+DIM dims[] =
+{
+    {96,	96},     //FRAMESIZE_96X96
+
+    {160,	120},    //FRAMESIZE_QQVGA
+    {176,	144},    //FRAMESIZE_QCIF
+    {240,	176},    //FRAMESIZE_HQVGA
+    {240,	240},    //FRAMESIZE_240X240
+    {320,	240},    //FRAMESIZE_QVGA
+
+    {400,	296},    //FRAMESIZE_CIF
+    {480,	320},    //FRAMESIZE_HVGA
+    {640,	480},    //FRAMESIZE_VGA
+    {800,	600},    //FRAMESIZE_SVGA
+    {1024,	768},    //FRAMESIZE_XGA
+
+    {1280,	720},    //FRAMESIZE_HD
+    {1280,	1024},   //FRAMESIZE_SXGA
+    {1600,	1200},   //FRAMESIZE_UXGA
+    {1920,	1080},   //FRAMESIZE_FHD
+    {720,	1280},   //FRAMESIZE_P_HD
+
+    {864,	1536},   //FRAMESIZE_P_3MP
+    {2048,	1536},   //FRAMESIZE_QXGA
+    {2560,	1440},   //FRAMESIZE_QHD
+    {2560,	1600},   //FRAMESIZE_WQXGA
+    {1080,	1920},   //FRAMESIZE_P_FHD
+
+    {2560,	1920}    //FRAMESIZE_QSXGA
+};
+
+bool get_dims( uint8_t index, uint16_t *x, uint16_t *y)
+{
+	if (index <= sizeof(dims)/sizeof(DIM))
+	{
+		*x = dims[index].x;
+		*y = dims[index].y;
+		return true;
+	}
+	else
+	{
+		*x = 0;
+		*y = 0;
+		return false;
+	}
 }
 
