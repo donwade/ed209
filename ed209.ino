@@ -357,10 +357,11 @@ bool camera_capture(uint32_t tag_width, uint32_t tag_height, uint8_t *out_buf) {
         do_resize = true;
     }
 
-    log_d("resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
-    log_d("tag_width == %d vs %d and tag_height == %d vs %d",
-        tag_width, EI_CAMERA_RAW_FRAME_BUFFER_COLS,
-        tag_height, EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
+    ESP_LOGI(TAG, "resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
+    ESP_LOGI(TAG, "tag %d x %d and frame = %d x %d",
+        tag_width, tag_height,
+        EI_CAMERA_RAW_FRAME_BUFFER_COLS,
+        EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
 
     if (do_resize) {
         crop_and_interpolate_rgb888(
