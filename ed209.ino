@@ -332,16 +332,28 @@ bool camera_capture(uint32_t tag_width, uint32_t tag_height, uint8_t *out_buf) {
 
 
 
+   // cant use RGB888 direct from camera transfer rate not quick enough
+   // for our resolution. So ask for JPEG and manually expand it.
+
    bool bJPEG2RGB = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
    log_d("fmt2rgb out %s", bJPEG2RGB ? "pass": "fail");
 
 #ifndef NO_LCD_DISPLAY
-   uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width * sizeof(*pRGB565));
-   bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
-   assert(bOk);  //why not OK
+    {
+       bool bOk;
+       uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width * sizeof(*pRGB565));
 
-   lcd->viewPort(0, 0,320, 240, 0, 0, fb->width, fb->height, pRGB565);
-   free(pRGB565);
+       bOk = RGB888to565 ((uint8_t *) pRGB88, pRGB565, fb->width * fb->width );
+
+       //bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
+       assert(bOk);  //why not OK
+
+       lcd->viewPort(0, 0,      //lcd start corrd
+                     320, 240,  // lcd width x height
+                     0, 0,      // source buffer start.
+                     fb->width, fb->height, pRGB565);
+       free(pRGB565);
+    }
 #endif
 
 
@@ -395,5 +407,27 @@ int BGRtoRGB_swap(size_t offset, size_t length, float *out_ptr)
     }
     // and done!
     return 0;
+}
+
+int RGB888to565 (uint8_t *in, uint16_t *out, uint32_t size)
+{
+    uint32_t by_888 = 0;
+    uint32_t by_565 = 0;
+
+    // don't look to close, the RGB888 does have its
+    // R and G swapped so we swap it back for
+    // color correctness.
+
+    while(size--){
+        uint16_t R, G, B;
+        uint16_t mix;
+        B = in[by_888++] >> 3; // 5 bit accuracy
+        G = in[by_888++] >> 2; // 6 bit accuracy
+        R = in[by_888++] >> 3; // 5 bit accuracy
+        mix = (R << (5+6)) | (G << (5+0)) |  B;
+        out[by_565++] = mix;
+        //if (!(by_565 % 32)) printf("0x%02x 0x%02x 0x%02x 0x%04x \n ", R, G, B, mix);
+    }
+    return 1;
 }
 
