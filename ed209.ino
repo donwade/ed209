@@ -119,7 +119,10 @@ extern bool get_dims( uint8_t index, uint16_t *w, uint16_t *h, uint32_t *p);
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
-uint8_t *pRGB88; //points to the output of the capture
+
+uint8_t *pRGB_888; //data block for AI
+uint16_t *pRGB565; //data block for LCD screen
+
 
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -187,6 +190,13 @@ void setup()
 
     setup2();
     setup3();
+
+    pRGB_888 = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+    assert(pRGB_888);
+
+    pRGB565 = (uint16_t *) ps_malloc( 320 * 240 * sizeof(*pRGB565));
+    assert(pRGB565);
+
     ei_sleep(2000);
 
 }
@@ -208,23 +218,13 @@ void loop()
     MARK("ei_sleep(5)");
     #endif
 
-    pRGB88 = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-
-
-    // check if allocation was successful
-    if(pRGB88 == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
     //MARK("ps_malloc'd");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB88) == false) {
+    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB_888) == false) {
         ei_printf("Failed to capture image\r\n");
-        free(pRGB88);
         return;
     }
     //MARK("ei_camera_captured");
@@ -297,8 +297,6 @@ void loop()
 #else
     printf("AI disabled, %s %s\n", __DATE__, __TIME__);
 #endif
-
-    free(pRGB88);
 
 }
 
@@ -402,20 +400,18 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 
 
 
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
+   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB_888);
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
 #ifndef NO_LCD_DISPLAY
-   uint16_t *pRGB565 = (uint16_t *) ps_malloc(fb->width * fb->width * sizeof(*pRGB565));
    bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
    assert(bOk);  //why not OK
 
    lcd->viewPort(0, 0,320, 240, 0, 0, fb->width, fb->height, pRGB565);
-   free(pRGB565);
 #endif
 
 
-   esp_camera_fb_return(fb);
+   esp_camera_fb_return(fb);  // "free memory"
 
    if(!converted){
        ei_printf("Conversion failed\n");
@@ -455,7 +451,7 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     while (pixels_left != 0) {
         // Swap BGR to RGB here
         // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (pRGB88[pixel_ix + 2] << 16) + (pRGB88[pixel_ix + 1] << 8) + pRGB88[pixel_ix];
+        out_ptr[out_ptr_ix] = (pRGB_888[pixel_ix + 2] << 16) + (pRGB_888[pixel_ix + 1] << 8) + pRGB_888[pixel_ix];
 
         // go to the next pixel
         out_ptr_ix++;
