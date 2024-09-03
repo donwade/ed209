@@ -208,7 +208,7 @@ void loop()
     MARK("ei_sleep(5)");
     #endif
 
-    pRGB88 = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+    pRGB88 = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 
 
     // check if allocation was successful
@@ -217,7 +217,7 @@ void loop()
         return;
     }
 
-    //MARK("malloc'd");
+    //MARK("ps_malloc'd");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
@@ -406,7 +406,7 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
    log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
 #ifndef NO_LCD_DISPLAY
-   uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width * sizeof(*pRGB565));
+   uint16_t *pRGB565 = (uint16_t *) ps_malloc(fb->width * fb->width * sizeof(*pRGB565));
    bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
    assert(bOk);  //why not OK
 
