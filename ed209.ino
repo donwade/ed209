@@ -35,6 +35,7 @@ extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
 
 extern void setup2(void);
 extern void setup3(void);
+extern bool get_dims( uint8_t index, uint16_t *w, uint16_t *h, uint32_t *p);
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
@@ -157,6 +158,9 @@ static camera_config_t camera_config = {
 bool ei_camera_init(void);
 void ei_camera_deinit(void);
 bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf) ;
+
+uint16_t cam_width, cam_height;
+uint32_t cam_pixels;
 
 /**
 * @brief      Arduino setup function
@@ -319,6 +323,9 @@ bool ei_camera_init(void) {
       return false;
     }
 
+    get_dims( camera_config.frame_size, &cam_width, &cam_height, &cam_pixels);
+    log_i("camera is configd for  %d x %d = %d ", cam_width, cam_height, cam_pixels);
+
     sensor_t * s = esp_camera_sensor_get();
     // initial sensors are flipped vertically and colors are a bit saturated
     if (s->id.PID == OV3660_PID) {
@@ -389,7 +396,7 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         return false;
     }
 
-   log_d("fmt2rgb  width=%d height=%d area=%d", fb->width, fb->height, fb->width
+   log_d("capture reports %d x %d = %d", fb->width, fb->height, fb->width
    * fb->height);
    log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
 

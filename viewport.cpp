@@ -10,7 +10,6 @@
 #define SCR_HT ST7789_TFTHEIGHT
 
 #include "ST7789_AVR.h"
-#include "bitmap.h"
 
 uint16_t colorBar[50];
 
@@ -21,20 +20,12 @@ void setup2(void)
   lcd = new ST7789_AVR(ENGINE_HSPI);
   lcd->init(SCR_WD, SCR_HT);
   lcd->fillScreen(BLACK);
-  lcd->setRotation(three_oclock);
-
-  int i,j;
-  for(j=0;j<7;j++)
-    for(i=0;i<7;i++)
-      lcd->drawImageF(i*34,j*34,32,32,mario);
-  delay(4000);
-
   Serial.println("Setup2 done");
 }
 
 void loop2()
 {
-  lcd->drawImageF(random(0,240-32),random(0,240-32),32,32,mario);
+	delay(10000);
 }
 
 #else
