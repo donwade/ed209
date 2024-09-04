@@ -28,14 +28,22 @@
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 
 #include "esp_camera.h"
+
 #include  "ST7789_AVR.h"
+#define LED_WIDTH  320
+#define LED_HEIGHT 240
+
+
 #include  "profiler.h"
 
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
 
 extern void setup2(void);
 extern void setup3(void);
-extern bool get_dims( uint8_t index, uint16_t *w, uint16_t *h, uint32_t *p);
+extern "C" bool get_dims( uint8_t index, uint16_t *w, uint16_t *h, uint32_t *p);
+extern "C" bool grey2rgb888 ( uint16_t startX, uint16_t startY, uint16_t wide, uint16_t height,
+				   uint8_t *pBufGrey, uint16_t width_grey, uint16_t height_grey,
+				   uint8_t *pBuff888, uint16_t width_888, uint16_t height888);
 
 // Select camera model - find more camera models in camera_pins.h file here
 // https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/Camera/CameraWebServer/camera_pins.h
@@ -120,8 +128,9 @@ extern bool get_dims( uint8_t index, uint16_t *w, uint16_t *h, uint32_t *p);
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
 
-uint8_t *pRGB_888; //data block for AI
+uint8_t  *pRGB_888_4AI; //data block for AI
 uint16_t *pRGB565; //data block for LCD screen
+uint8_t  *pMonoBuff = 0;
 
 
 static camera_config_t camera_config = {
@@ -148,7 +157,8 @@ static camera_config_t camera_config = {
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
-    .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
+    .pixel_format = PIXFORMAT_GRAYSCALE, //YUV422,GRAYSCALE,RGB565,JPEG
+    //.pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
     .frame_size = FRAMESIZE_QVGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
     .jpeg_quality = 12, //0-63 lower number means higher quality
@@ -191,10 +201,10 @@ void setup()
     setup2();
     setup3();
 
-    pRGB_888 = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
-    assert(pRGB_888);
+    pRGB_888_4AI = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
+    assert(pRGB_888_4AI);
 
-    pRGB565 = (uint16_t *) ps_malloc( 320 * 240 * sizeof(*pRGB565));
+    pRGB565 = (uint16_t *) ps_malloc( LED_WIDTH * LED_HEIGHT * sizeof(*pRGB565));
     assert(pRGB565);
 
     ei_sleep(2000);
@@ -223,7 +233,7 @@ void loop()
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB_888) == false) {
+    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB_888_4AI) == false) {
         ei_printf("Failed to capture image\r\n");
         return;
     }
@@ -324,6 +334,8 @@ bool ei_camera_init(void) {
     get_dims( camera_config.frame_size, &cam_width, &cam_height, &cam_pixels);
     log_i("camera is configd for  %d x %d = %d ", cam_width, cam_height, cam_pixels);
 
+    if (!pMonoBuff) pMonoBuff = (uint8_t *) ps_malloc(cam_width * cam_height );
+
     sensor_t * s = esp_camera_sensor_get();
     // initial sensors are flipped vertically and colors are a bit saturated
     if (s->id.PID == OV3660_PID) {
@@ -394,16 +406,25 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         return false;
     }
 
-   log_d("capture reports %d x %d = %d", fb->width, fb->height, fb->width
+   log_i("camera reporting %d x %d = %d", fb->width, fb->height, fb->width
    * fb->height);
-   log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
+   log_i("camera bytes/pixel = %d",  fb->len/ (fb->width * fb->height));
+
+   bool ok = grey2rgb888 ( 0, 0,                        // startX startY
+                        EI_CAMERA_RAW_FRAME_BUFFER_COLS, //wide
+                        EI_CAMERA_RAW_FRAME_BUFFER_ROWS, //height
+				   pMonoBuff,                           //pBufGrey
+				        fb->width,                       //width_grey
+				        fb->height,                      //height_grey
+				   pRGB_888_4AI,                        //pBuff888
+				        EI_CAMERA_RAW_FRAME_BUFFER_COLS, //width_888
+				        EI_CAMERA_RAW_FRAME_BUFFER_ROWS); //height888
 
 
+//   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB_888_4AI);
+//   log_d("fmt2rgb out %s", converted ? "pass": "fail");
 
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB_888);
-   log_d("fmt2rgb out %s", converted ? "pass": "fail");
-
-#ifndef NO_LCD_DISPLAY
+#if 0 //ndef NO_LCD_DISPLAY
    bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
    assert(bOk);  //why not OK
 
@@ -412,12 +433,12 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 
 
    esp_camera_fb_return(fb);  // "free memory"
-
+/*
    if(!converted){
        ei_printf("Conversion failed\n");
        return false;
    }
-
+*/
     if ((img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
         || (img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
         do_resize = true;
@@ -451,7 +472,7 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     while (pixels_left != 0) {
         // Swap BGR to RGB here
         // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (pRGB_888[pixel_ix + 2] << 16) + (pRGB_888[pixel_ix + 1] << 8) + pRGB_888[pixel_ix];
+        out_ptr[out_ptr_ix] = (pRGB_888_4AI[pixel_ix + 2] << 16) + (pRGB_888_4AI[pixel_ix + 1] << 8) + pRGB_888_4AI[pixel_ix];
 
         // go to the next pixel
         out_ptr_ix++;
