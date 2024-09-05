@@ -395,6 +395,14 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
    bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB888[rgb888_index]);
    rgb888_index = (rgb888_index+1) & 3;
 
+   log_i("fmt2rgb out %s", converted ? "pass": "fail");
+
+   if(!converted){
+       ei_printf("Conversion failed\n");
+       assert(0);
+       return false;
+   }
+
    if (rgb888_index)
    {
        esp_camera_fb_return(fb);   // free camera mem
@@ -402,12 +410,19 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
        return false;
    }
 
-   log_i("fmt2rgb out %s", converted ? "pass": "fail");
+   uint32_t index;
+   for (index = 0; index < fb->width * fb->height * 3; index++)
+   {
+        uint8_t a,b,c,d,e;
+        a=pRGB888[0][index];
+        b=pRGB888[1][index];
+        c=pRGB888[2][index];
+        d=pRGB888[3][index];
+        e = max(d, max(a, max(b,c)));
 
-   if(!converted){
-       ei_printf("Conversion failed\n");
-       assert(0);
-       return false;
+        if (e != pRGB888[0][index]) log_i(" %d vs %d", e,pRGB888[0][index]) ;
+
+        pRGB888[0][index] = e;
    }
 
 #ifndef NO_LCD_DISPLAY
