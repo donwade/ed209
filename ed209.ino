@@ -31,6 +31,11 @@
 #include  "ST7789_AVR.h"
 #include  "profiler.h"
 
+#define BUFF_COUNT 4
+uint8_t rgb888_index = 0;
+uint8_t *pRGB888[BUFF_COUNT];
+
+
 extern uint16_t *convert( uint16_t w, uint16_t h, uint8_t *_input);
 
 extern void setup2(void);
@@ -118,7 +123,6 @@ extern void setup3(void);
 /* Private variables ------------------------------------------------------- */
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static bool is_initialised = false;
-uint8_t *pRGB88; //points to the output of the capture
 
 static camera_config_t camera_config = {
     .pin_pwdn = PWDN_GPIO_NUM,
@@ -163,11 +167,14 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 */
 void setup()
 {
+    int i;
+
     // put your setup code here, to run once:
     Serial.begin(115200);
     delay(3000);
 
-    mem_report();
+    for (i = 0; i < BUFF_COUNT; i++)
+    pRGB888[i] = (uint8_t*)ps_malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 
     //comment out the below line to start inference immediately after upload
     while (!Serial);
@@ -183,6 +190,8 @@ void setup()
 
     setup2();
     setup3();
+    mem_report();
+
     ei_sleep(2000);
 
 }
@@ -204,23 +213,14 @@ void loop()
     MARK("ei_sleep(5)");
     #endif
 
-    pRGB88 = (uint8_t*)malloc(EI_CAMERA_RAW_FRAME_BUFFER_COLS * EI_CAMERA_RAW_FRAME_BUFFER_ROWS * EI_CAMERA_FRAME_BYTE_SIZE);
 
-
-    // check if allocation was successful
-    if(pRGB88 == nullptr) {
-        ei_printf("ERR: Failed to allocate snapshot buffer!\n");
-        return;
-    }
-
-    //MARK("malloc'd");
     ei::signal_t signal;
     signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
     signal.get_data = &ei_camera_get_data;
 
-    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT, pRGB88) == false) {
-        ei_printf("Failed to capture image\r\n");
-        free(pRGB88);
+    if (ei_camera_capture((size_t)EI_CLASSIFIER_INPUT_WIDTH, (size_t)EI_CLASSIFIER_INPUT_HEIGHT,
+    pRGB888 [0]) == false) {
+        ei_printf("early return\r\n");
         return;
     }
     //MARK("ei_camera_captured");
@@ -293,8 +293,6 @@ void loop()
 #else
     printf("AI disabled, %s %s\n", __DATE__, __TIME__);
 #endif
-
-    free(pRGB88);
 
 }
 
@@ -386,6 +384,7 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
 
     if (!fb) {
         ei_printf("Camera capture failed\n");
+        assert(0);
         return false;
     }
 
@@ -393,35 +392,40 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
    * fb->height);
    log_d("fmt2rgb  buf=%p len=%d", fb->buf, fb->len);
 
+   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB888[rgb888_index]);
+   rgb888_index = (rgb888_index+1) & 3;
 
+   if (rgb888_index)
+   {
+       esp_camera_fb_return(fb);   // free camera mem
+       log_i("record buf #%d", rgb888_index);
+       return false;
+   }
 
-   bool converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, pRGB88);
-   log_d("fmt2rgb out %s", converted ? "pass": "fail");
+   log_i("fmt2rgb out %s", converted ? "pass": "fail");
+
+   if(!converted){
+       ei_printf("Conversion failed\n");
+       assert(0);
+       return false;
+   }
 
 #ifndef NO_LCD_DISPLAY
    uint16_t *pRGB565 = (uint16_t *) malloc(fb->width * fb->width * sizeof(*pRGB565));
    bool bOk = jpg2rgb565(fb->buf, fb->len, (uint8_t*) pRGB565, JPG_SCALE_NONE);
-   assert(bOk);  //why not OK
 
    lcd->viewPort(0, 0,320, 240, 0, 0, fb->width, fb->height, pRGB565);
    free(pRGB565);
 #endif
 
 
-   esp_camera_fb_return(fb);
-
-   if(!converted){
-       ei_printf("Conversion failed\n");
-       return false;
-   }
-
     if ((img_width != EI_CAMERA_RAW_FRAME_BUFFER_COLS)
         || (img_height != EI_CAMERA_RAW_FRAME_BUFFER_ROWS)) {
         do_resize = true;
     }
 
-    log_d("resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
-    log_d("img_width == %d vs %d and img_height == %d vs %d",
+    log_i("resize is %s", do_resize ? "REQUIRED" : "NOT NEEDED");
+    log_i("img_width == %d vs %d and img_height == %d vs %d",
         img_width, EI_CAMERA_RAW_FRAME_BUFFER_COLS,
         img_height, EI_CAMERA_RAW_FRAME_BUFFER_ROWS);
 
@@ -434,6 +438,8 @@ bool ei_camera_capture(uint32_t img_width, uint32_t img_height, uint8_t *out_buf
         img_width,
         img_height);
     }
+
+   esp_camera_fb_return(fb); // free camera mem
 
     return true;
 }
@@ -448,7 +454,8 @@ static int ei_camera_get_data(size_t offset, size_t length, float *out_ptr)
     while (pixels_left != 0) {
         // Swap BGR to RGB here
         // due to https://github.com/espressif/esp32-camera/issues/379
-        out_ptr[out_ptr_ix] = (pRGB88[pixel_ix + 2] << 16) + (pRGB88[pixel_ix + 1] << 8) + pRGB88[pixel_ix];
+        out_ptr[out_ptr_ix] = (pRGB888[0][pixel_ix + 2] << 16) + (pRGB888[0][pixel_ix + 1] << 8) +
+        pRGB888[0][pixel_ix];
 
         // go to the next pixel
         out_ptr_ix++;
